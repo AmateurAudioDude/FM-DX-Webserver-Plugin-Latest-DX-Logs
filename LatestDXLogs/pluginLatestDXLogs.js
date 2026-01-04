@@ -1,5 +1,5 @@
 /*
-    Latest DX Logs v1.0.0 by AAD
+    Latest DX Logs v1.0.1 by AAD
     https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Latest-DX-Logs
 */
 
@@ -15,12 +15,12 @@ const DX_SESSION_TIME = 1440;               // minutes before plugin fades out
 const DX_CYCLE_TIME = 8;                    // seconds before cycling to the next entry
 const DX_MAX_AGE_MIN = 12;                  // ignore entries older than x hours
 const EVENT_LOCATION = 1;                   // fixed ticker location: 1, 2, 3, 4, or 5
-const EVENT_LOCATION_OFFSET_MOBILE = 18;    // offset in px for mobile
+const EVENT_LOCATION_OFFSET_MOBILE = 0;     // offset in px for mobile
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
 // Check for update variables
-const pluginVersion = '1.0.0';
+const pluginVersion = '1.0.1';
 const pluginName = "Latest DX Logs";
 const pluginHomepageUrl = "https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Latest-DX-Logs";
 const pluginUpdateUrl = "https://raw.githubusercontent.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Latest-DX-Logs/refs/heads/main/LatestDXLogs/pluginLatestDXLogs.js";
@@ -152,20 +152,20 @@ function showDxEntry(entry, useFade = true, highlight = false) {
         note = document.createElement("div");
         note.id = "last-log-note";
 
-        let bottomValue;
+        let bottomValue, mobileOffset = 18;
 
         if (EVENT_LOCATION === 1) {
-            bottomValue = `calc(${innerWidth <= 768 ? `100% - ${EVENT_LOCATION_OFFSET_MOBILE}px` : (innerHeight <= 720 && innerWidth >= 920) ? '50% + 6.5px' : '50% - 1px'})`;
+            bottomValue = `calc(${innerWidth <= 768 ? `100% - ${EVENT_LOCATION_OFFSET_MOBILE + mobileOffset}px` : (innerHeight <= 720 && innerWidth >= 920) ? '50% + 6.5px' : '50% - 1px'})`;
         } else if (EVENT_LOCATION === 2) {
-            bottomValue = `calc(${innerWidth <= 768 ? `100% - ${EVENT_LOCATION_OFFSET_MOBILE}px` : (innerHeight <= 720 && innerWidth >= 920) ? '100%' : '100%'})`;
+            bottomValue = `calc(${innerWidth <= 768 ? `100% - ${EVENT_LOCATION_OFFSET_MOBILE + mobileOffset}px` : (innerHeight <= 720 && innerWidth >= 920) ? '100%' : '100%'})`;
         } else if (EVENT_LOCATION === 3) {
-            bottomValue = `calc(${innerWidth <= 768 ? `100% - ${EVENT_LOCATION_OFFSET_MOBILE}px` : (innerHeight <= 720 && innerWidth >= 920) ? '100% - 18px' : '100% - 18px'})`;
+            bottomValue = `calc(${innerWidth <= 768 ? `100% - ${EVENT_LOCATION_OFFSET_MOBILE + mobileOffset}px` : (innerHeight <= 720 && innerWidth >= 920) ? '100% - 18px' : '100% - 18px'})`;
         } else if (EVENT_LOCATION === 4) {
-            bottomValue = `calc(${innerWidth <= 768 ? `100% - ${EVENT_LOCATION_OFFSET_MOBILE}px` : (innerHeight <= 720 && innerWidth >= 920) ? '0%' : '0%'})`;
+            bottomValue = `calc(${innerWidth <= 768 ? `100% - ${EVENT_LOCATION_OFFSET_MOBILE + mobileOffset}px` : (innerHeight <= 720 && innerWidth >= 920) ? '0%' : '0%'})`;
         } else if (EVENT_LOCATION === 5) {
-            bottomValue = `calc(${innerWidth <= 768 ? `100% - ${EVENT_LOCATION_OFFSET_MOBILE}px` : (innerHeight <= 720 && innerWidth >= 920) ? '0% - 18px' : '0% - 18px'})`;
+            bottomValue = `calc(${innerWidth <= 768 ? `100% - ${EVENT_LOCATION_OFFSET_MOBILE + mobileOffset}px` : (innerHeight <= 720 && innerWidth >= 920) ? '0% - 18px' : '0% - 18px'})`;
         } else {
-            bottomValue = `calc(${innerWidth <= 768 ? `100% - ${EVENT_LOCATION_OFFSET_MOBILE}px` : (innerHeight <= 720 && innerWidth >= 920) ? '50% + 6.5px' : '50% - 1px'})`;
+            bottomValue = `calc(${innerWidth <= 768 ? `100% - ${EVENT_LOCATION_OFFSET_MOBILE + mobileOffset}px` : (innerHeight <= 720 && innerWidth >= 920) ? '50% + 6.5px' : '50% - 1px'})`;
         }
 
         note.style.cssText = `
@@ -213,7 +213,7 @@ function showDxEntry(entry, useFade = true, highlight = false) {
 
     // Brightness highlight
     setTimeout(() => {
-        note.style.filter = highlight ? "brightness(1.8)" : "brightness(0.8)";
+        note.style.filter = highlight && dxEntries.length > 1 ? "brightness(1.85)" : "brightness(0.75)";
     }, FADE_MS / 2);
 
     const plainLength = (displayStation + freq + dist + time).length;

@@ -1,5 +1,5 @@
 /*
-    Latest DX Logs v1.0.0 by AAD
+    Latest DX Logs v1.0.1 by AAD
     https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Latest-DX-Logs
 
     //// Server-side code ////
@@ -230,11 +230,18 @@ async function handleTextSocketMessage(event) {
                   });
                 };
 
-                const subject = `[DX Log] ${ServerName.slice(0, 15)}... received ${station} [${itu}] on ${frequency} from ${distance} km`;
-                const message = `${ServerName} received ${station} on ${frequency} MHz with PI: ${picode} from ${city} in ${itu} which is ${distance} km.`;
+                const formatFrequency = (frequency) => {
+                    const numFrequency = Number(frequency);
+                    if (isNaN(numFrequency)) return frequency;
+
+                    return numFrequency % 1 === 0 ? numFrequency.toFixed(1) : numFrequency.toFixed(2).replace(/0$/, ''); 
+                };
+
+                const subject = `[DX Log] ${ServerName.slice(0, 15)}... received ${station} [${itu}] on ${formatFrequency(frequency)} from ${distance} km`;
+                const message = `${ServerName} received ${station} on ${formatFrequency(frequency)} MHz with PI: ${picode} from ${city} in ${itu} which is ${distance} km.`;
 
                 sendEmail(subject, message);
-                logInfo(`[${pluginName}] DX email sent for ${station} on ${frequency}`);
+                logInfo(`[${pluginName}] DX email sent for ${station} on ${formatFrequency(frequency)}`);
             }
         }
 
