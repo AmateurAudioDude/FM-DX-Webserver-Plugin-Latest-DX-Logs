@@ -9,9 +9,9 @@
 
 const pluginName = "DX Log";
 
-const dxSeen = new Map();                       // key → lastSeen timestamp
+const dxSeen = new Map();                       // key --> lastSeen timestamp
 const dxConsoleSeen = new Map();                // last logged to console
-const dxIndex = new Map();                      // key → array index
+const dxIndex = new Map();                      // key --> array index
 const latestDxLog = [];
 
 // Library imports
