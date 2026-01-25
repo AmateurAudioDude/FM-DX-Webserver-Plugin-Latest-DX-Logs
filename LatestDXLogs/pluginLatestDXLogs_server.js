@@ -194,6 +194,7 @@ async function handleTextSocketMessage(event) {
 
         const {
             tx: station,
+            erp,
             city,
             itu,
             dist: distance,
@@ -216,7 +217,7 @@ async function handleTextSocketMessage(event) {
         const lastConsole = dxConsoleSeen.get(key) || 0;
         if (now - lastConsole >= (DX_CONSOLE_HOLD_TIME * 60 * 1000)) {
             dxConsoleSeen.set(key, now);
-            logInfo(`[${pluginName}] ${station || "?"}, ${frequency} MHz, ${city || ""} [${itu || ""}], ${distance} km`);
+            logInfo(`[${pluginName}] ${station || "?"} (${erp || "?"}kW), ${frequency} MHz, ${city || ""} [${itu || ""}], ${distance} km`);
 
             if (SEND_EMAIL && nodemailer) {
                 const emailConfig = { service: EMAIL_SERVICE, auth: { user: EMAIL_USER, pass: EMAIL_PASS } };
@@ -238,7 +239,7 @@ async function handleTextSocketMessage(event) {
                 };
 
                 const subject = `[DX Log] ${ServerName.slice(0, 15)}... received ${station} [${itu}] on ${formatFrequency(frequency)} from ${distance} km`;
-                const message = `${ServerName} received ${station} on ${formatFrequency(frequency)} MHz with PI: ${picode} from ${city} in ${itu} which is ${distance} km.`;
+                const message = `${ServerName} received ${station} (${erp || "?"}kW) on ${formatFrequency(frequency)} MHz with PI: ${picode} from ${city} in ${itu} which is ${distance} km.`;
 
                 sendEmail(subject, message);
                 logInfo(`[${pluginName}] DX email sent for ${station} on ${formatFrequency(frequency)}`);
