@@ -13,6 +13,7 @@ const dxSeen = new Map();                       // key --> lastSeen timestamp
 const dxConsoleSeen = new Map();                // last logged to console
 const dxIndex = new Map();                      // key --> array index
 const latestDxLog = [];
+const emailTruncatedTitle = 20;                 // characters
 
 // Library imports
 const WebSocket = require('ws');
@@ -238,7 +239,7 @@ async function handleTextSocketMessage(event) {
                   });
                 };
 
-                const subject = `[DX Log] ${ServerName.slice(0, 15)}... received ${station} [${itu}] on ${formatFrequency(frequency)} from ${distance} km`;
+                const subject = `[DX Log] ${ServerName.slice(0, emailTruncatedTitle)}... received ${station} [${itu}] on ${formatFrequency(frequency)} from ${distance} km`;
                 const message = `[${ServerName}] Received ${station} on ${formatFrequency(frequency)} MHz (${erp || "?"}kW) with PI: ${picode} from ${city} in ${itu} which is ${distance} km.`;
 
                 sendEmail(subject, message);
