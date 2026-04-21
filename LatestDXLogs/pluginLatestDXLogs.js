@@ -1,5 +1,5 @@
 /*
-    Latest DX Logs v1.0.1 by AAD
+    Latest DX Logs v1.0.2 by AAD
     https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Latest-DX-Logs
 */
 

@@ -12,6 +12,10 @@
 * Server-side configuration options stored in `/plugins_configs/LatestDXLogs.json`
 * Client-side configuration options located in `pluginLatestDXLogs.js`
 
+v1.0.2
+------
+* DX logs remembered on server restart
+
 v1.0.1
 ------
 * Minor email formatting changes

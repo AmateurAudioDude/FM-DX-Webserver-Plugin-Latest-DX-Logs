@@ -1,5 +1,5 @@
 /*
-    Latest DX Logs v1.0.1 by AAD
+    Latest DX Logs v1.0.2 by AAD
     https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Latest-DX-Logs
 
     //// Server-side code ////
@@ -8,6 +8,8 @@
 'use strict';
 
 const pluginName = "DX Log";
+
+const LOG_ENTRY_MAX_AGE_HOURS = 48;             // server-side pruning: drop log entries older than this
 
 const dxSeen = new Map();                       // key --> lastSeen timestamp
 const dxConsoleSeen = new Map();                // last logged to console
@@ -32,6 +34,7 @@ const rootDir = path.dirname(require.main.filename);
 const configFolderPath = path.join(rootDir, 'plugins_configs');
 const configFileName = 'LatestDXLogs.json';
 const configFilePath = path.join(configFolderPath, configFileName);
+const logHistoryFilePath = path.join(__dirname, 'dxLogHistory.json');
 
 // const variables
 const debug = false;
@@ -40,6 +43,7 @@ const externalWsUrl = `ws://127.0.0.1:${webserverPort}`;
 
 // let variables
 let isFirstRun = true;
+let isDxLogUpdated = false;
 let ipAddress = externalWsUrl;
 let TextSocket;
 let ipTimeout;
@@ -126,6 +130,88 @@ function loadSettings() {
     }
 }
 
+function cleanUpExpiredLogs() {
+    const now = Date.now();
+    const maxAgeMs = LOG_ENTRY_MAX_AGE_HOURS * 60 * 60 * 1000;
+    const holdMs = (DX_HOLD_TIME * 60 * 1000) * 4;
+    const consoleHoldMs = (DX_CONSOLE_HOLD_TIME * 60 * 1000) * 4;
+    let changed = false;
+
+    // Prune latestDxLog by age
+    for (let i = latestDxLog.length - 1; i >= 0; i--) {
+        if (now - latestDxLog[i].time > maxAgeMs) {
+            latestDxLog.splice(i, 1);
+            changed = true;
+        }
+    }
+    if (changed) {
+        dxIndex.clear();
+        latestDxLog.forEach((e, i) => dxIndex.set(e.key, i));
+    }
+
+    // Enforce count cap, upsertDxLog also handles this
+    while (latestDxLog.length > MAX_LOG_ENTRIES) {
+        const removed = latestDxLog.pop();
+        dxIndex.delete(removed.key);
+        changed = true;
+    }
+
+    // Prune seen-maps
+    for (const [k, t] of dxSeen) {
+        if (now - t > holdMs) { dxSeen.delete(k); changed = true; }
+    }
+    for (const [k, t] of dxConsoleSeen) {
+        if (now - t > consoleHoldMs) { dxConsoleSeen.delete(k); changed = true; }
+    }
+
+    if (changed) {
+        isDxLogUpdated = true;
+        saveDxLog();
+    }
+}
+
+function loadDxLog() {
+    if (!fs.existsSync(logHistoryFilePath)) return;
+    try {
+        const data = JSON.parse(fs.readFileSync(logHistoryFilePath, 'utf8'));
+
+        if (Array.isArray(data.latestDxLog)) {
+            latestDxLog.push(...data.latestDxLog);
+            dxIndex.clear();
+            latestDxLog.forEach((e, i) => dxIndex.set(e.key, i));
+        }
+
+        if (data.dxSeen && typeof data.dxSeen === 'object') {
+            for (const [k, t] of Object.entries(data.dxSeen)) dxSeen.set(k, t);
+        }
+
+        if (data.dxConsoleSeen && typeof data.dxConsoleSeen === 'object') {
+            for (const [k, t] of Object.entries(data.dxConsoleSeen)) dxConsoleSeen.set(k, t);
+        }
+
+        const restored = latestDxLog.length;
+        cleanUpExpiredLogs();
+        logInfo(`[${pluginName}] Restored ${restored} log entr${restored === 1 ? 'y' : 'ies'} from ${path.basename(logHistoryFilePath)} (${latestDxLog.length} after pruning, max age ${LOG_ENTRY_MAX_AGE_HOURS}h)`);
+    } catch (err) {
+        logError(`[${pluginName}] Error loading DX log history:`, err.message);
+    }
+}
+
+function saveDxLog() {
+    if (!isDxLogUpdated) return;
+    try {
+        const data = {
+            latestDxLog,
+            dxSeen: Object.fromEntries(dxSeen),
+            dxConsoleSeen: Object.fromEntries(dxConsoleSeen)
+        };
+        fs.writeFileSync(logHistoryFilePath, JSON.stringify(data, null, 4));
+        isDxLogUpdated = false;
+    } catch (err) {
+        logError(`[${pluginName}] Error saving DX log history:`, err.message);
+    }
+}
+
 function customRouter() {
     endpointsRouter.get('/latest-dx-log-plugin', (req, res) => {
         const pluginHeader = req.get('X-Plugin-Name') || 'NoPlugin';
@@ -175,6 +261,8 @@ function upsertDxLog(key, entry) {
         const removed = latestDxLog.pop();
         dxIndex.delete(removed.key);
     }
+
+    isDxLogUpdated = true;
 }
 
 function makeDxKey(freq, pi, itu, station) {
@@ -212,6 +300,7 @@ async function handleTextSocketMessage(event) {
         // Update memory if hold time passed
         if (now - lastSeen >= (DX_HOLD_TIME * 60 * 1000)) {
             dxSeen.set(key, now);
+            isDxLogUpdated = true;
         }
 
         // --- Console logging ---
@@ -225,6 +314,7 @@ async function handleTextSocketMessage(event) {
             };
 
             dxConsoleSeen.set(key, now);
+            isDxLogUpdated = true;
             logInfo(`[${pluginName}] ${station || "?"}, ${formatFrequency(frequency)} MHz (${erp || "?"}kW), ${city || ""} [${itu || ""}], ${distance} km`);
 
             if (SEND_EMAIL && nodemailer) {
@@ -247,14 +337,6 @@ async function handleTextSocketMessage(event) {
             }
         }
 
-        // Clean old keys
-        for (const [k, t] of dxSeen) {
-            if (now - t > (DX_HOLD_TIME * 60 * 1000) * 4) dxSeen.delete(k);
-        }
-        for (const [k, t] of dxConsoleSeen) {
-            if (now - t > (DX_CONSOLE_HOLD_TIME * 60 * 1000) * 4) dxConsoleSeen.delete(k);
-        }
-
         // Upsert entry in latestDxLog
         const entry = {
             key,
@@ -270,6 +352,7 @@ async function handleTextSocketMessage(event) {
         };
 
         upsertDxLog(key, entry);
+        saveDxLog();
 
     } catch (error) {
         logError(`[${pluginName}] Error handling TextSocket message:`, error);
@@ -308,5 +391,7 @@ async function setupTextSocket() {
 // Init
 checkConfigFile();
 loadSettings();
+loadDxLog();
 customRouter();
 setTimeout(setupTextSocket, 1000);
+setInterval(cleanUpExpiredLogs, 60 * 1000);
