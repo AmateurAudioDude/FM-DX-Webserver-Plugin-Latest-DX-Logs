@@ -1,5 +1,5 @@
 /*
-    Latest DX Logs v1.0.2 by AAD
+    Latest DX Logs v1.1.0 by AAD
     https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Latest-DX-Logs
 */
 
@@ -20,7 +20,7 @@ const EVENT_LOCATION_OFFSET_MOBILE = 0;     // offset in px for mobile
 //////////////////////////////////////////////////////////////////////////////////////////
 
 // Check for update variables
-const pluginVersion = '1.0.1';
+const pluginVersion = '1.1.0';
 const pluginName = "Latest DX Logs";
 const pluginHomepageUrl = "https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Latest-DX-Logs";
 const pluginUpdateUrl = "https://raw.githubusercontent.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Latest-DX-Logs/refs/heads/main/LatestDXLogs/pluginLatestDXLogs.js";

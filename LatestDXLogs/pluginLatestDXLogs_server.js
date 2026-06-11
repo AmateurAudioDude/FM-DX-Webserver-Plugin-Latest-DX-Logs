@@ -1,5 +1,5 @@
 /*
-    Latest DX Logs v1.0.2 by AAD
+    Latest DX Logs v1.1.0 by AAD
     https://github.com/AmateurAudioDude/FM-DX-Webserver-Plugin-Latest-DX-Logs
 
     //// Server-side code ////
@@ -49,6 +49,7 @@ let TextSocket;
 let ipTimeout;
 let nodemailer;
 let MINIMUM_DX_DISTANCE, MAX_LOG_ENTRIES, DX_HOLD_TIME, DX_CONSOLE_HOLD_TIME, SEND_EMAIL, EMAIL_SERVICE, EMAIL_USER, EMAIL_PASS;
+let CENTRAL_SERVER_URL, CENTRAL_SERVER_TOKEN, ENABLE_CENTRAL_INGEST, INGEST_LOCAL_ONLY;
 
 function checkConfigFile() {
     if (!fs.existsSync(configFolderPath)) {
@@ -66,7 +67,11 @@ function checkConfigFile() {
             "sendEmail": false,
             "emailServer": "gmail",
             "emailUser": "",
-            "emailPass": ""
+            "emailPass": "",
+            "centralServerUrl": "",
+            "centralServerToken": "",
+            "enableCentralIngest": false,
+            "ingestLocalOnly": true
         };
 
         // Custom formatting to keep frequency objects on one line
@@ -85,7 +90,11 @@ const defaultSettings = {
     sendEmail: false,
     emailServer: 'gmail',
     emailUser: '',
-    emailPass: ''
+    emailPass: '',
+    centralServerUrl: '',
+    centralServerToken: '',
+    enableCentralIngest: false,
+    ingestLocalOnly: true
 };
 
 function loadSettings() {
@@ -120,8 +129,12 @@ function loadSettings() {
         EMAIL_SERVICE = configData.emailServer ?? 'gmail';                      // email service
         EMAIL_USER = configData.emailUser ?? '';                                // email address
         EMAIL_PASS = configData.emailPass ?? '';                                // email password
+        CENTRAL_SERVER_URL = configData.centralServerUrl ?? '';                 // forward entries to this server
+        CENTRAL_SERVER_TOKEN = configData.centralServerToken ?? '';             // shared secret for central server
+        ENABLE_CENTRAL_INGEST = configData.enableCentralIngest ?? false;        // accept incoming entries from satellites
+        INGEST_LOCAL_ONLY = configData.ingestLocalOnly ?? true;                 // restrict ingest to local network IPs
 
-        logInfo(`[${pluginName}] Minimum distance: ${MINIMUM_DX_DISTANCE} km | Max log entries: ${MAX_LOG_ENTRIES} events | Hold time: ${DX_HOLD_TIME} min | Console hold time: ${DX_CONSOLE_HOLD_TIME} min | Send email: ${SEND_EMAIL}`);
+        logInfo(`[${pluginName}] Minimum distance: ${MINIMUM_DX_DISTANCE} km | Max log entries: ${MAX_LOG_ENTRIES} events | Hold time: ${DX_HOLD_TIME} min | Console hold time: ${DX_CONSOLE_HOLD_TIME} min | Send email: ${SEND_EMAIL} | Central: ${CENTRAL_SERVER_URL || 'none'} | Ingest: ${ENABLE_CENTRAL_INGEST}`);
 
         if (SEND_EMAIL) nodemailer = require('nodemailer');
     } catch (err) {
@@ -212,6 +225,33 @@ function saveDxLog() {
     }
 }
 
+// When centralServerUrl is set, forward every locally-committed entry to the
+// central server's /latest-dx-log-ingest endpoint. The `receiver` field prevents
+// re-forwarding entries that already arrived via ingest from another satellite.
+async function forwardEntryToCentral(entry) {
+    if (!CENTRAL_SERVER_URL || !entry) return;
+    if (entry.receiver && String(entry.receiver).trim()) return;
+
+    const payload = { ...entry, receiver: ServerName || '' };
+    const target = CENTRAL_SERVER_URL.replace(/\/+$/, '') + '/latest-dx-log-ingest';
+    try {
+        const response = await fetch(target, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(CENTRAL_SERVER_TOKEN ? { Authorization: `Bearer ${CENTRAL_SERVER_TOKEN}` } : {})
+            },
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+            const text = await response.text().catch(() => '');
+            logWarn(`[${pluginName}] Forward to central rejected (${response.status}): ${text.slice(0, 200)}`);
+        }
+    } catch (error) {
+        logError(`[${pluginName}] Forward to central failed: ${error.message}`);
+    }
+}
+
 function customRouter() {
     endpointsRouter.get('/latest-dx-log-plugin', (req, res) => {
         const pluginHeader = req.get('X-Plugin-Name') || 'NoPlugin';
@@ -231,6 +271,79 @@ function customRouter() {
             });
         } else {
             res.status(403).json({ error: 'Unauthorised' });
+        }
+    });
+
+    // Accept a forwarded entry from a satellite server. Auth is the shared
+    // centralServerToken sent as Bearer; the receiver must have enableCentralIngest set.
+    endpointsRouter.post('/latest-dx-log-ingest', (req, res) => {
+        if (!ENABLE_CENTRAL_INGEST) {
+            res.status(403).json({ error: 'Central ingest disabled.' });
+            return;
+        }
+
+        const expected = String(CENTRAL_SERVER_TOKEN || '').trim();
+        if (!expected) {
+            res.status(403).json({ error: 'Central ingest token not configured.' });
+            return;
+        }
+
+        const auth = req.get('Authorization') || '';
+        const match = auth.match(/^Bearer\s+(.+)$/i);
+        const provided = match ? match[1].trim() : '';
+        if (provided !== expected) {
+            res.status(401).json({ error: 'Invalid token.' });
+            return;
+        }
+
+        if (INGEST_LOCAL_ONLY) {
+            const raw = req.ip || req.socket?.remoteAddress || '';
+            const ip = raw.replace(/^::ffff:/, '');
+            const isLocal = ip === '::1' || /^127\./.test(ip) || /^10\./.test(ip) ||
+                /^192\.168\./.test(ip) || /^172\.(1[6-9]|2\d|3[01])\./.test(ip);
+            if (!isLocal) {
+                res.status(403).json({ error: 'Ingest restricted to local network.' });
+                return;
+            }
+        }
+
+        try {
+            const body = req.body;
+            if (!body || typeof body !== 'object') {
+                res.status(400).json({ error: 'Invalid payload.' });
+                return;
+            }
+
+            const key = body.key || makeDxKey(body.freq, body.pi, body.itu, body.station);
+            if (!key || key === '|||') {
+                res.status(400).json({ error: 'Missing or empty entry key.' });
+                return;
+            }
+
+            const entry = {
+                key,
+                time:     typeof body.time === 'number' ? body.time : Date.now(),
+                freq:     body.freq     ?? null,
+                pi:       body.pi       ?? null,
+                station:  body.station  ?? null,
+                city:     body.city     ?? null,
+                itu:      body.itu      ?? null,
+                distance: body.distance ?? null,
+                lat:      body.lat      ?? null,
+                lon:      body.lon      ?? null,
+                receiver: body.receiver ?? null
+            };
+
+            upsertDxLog(key, entry);
+            saveDxLog();
+
+            const freqFmt = Number.isFinite(Number(entry.freq)) ? Number(entry.freq).toFixed(1) : String(entry.freq || '?');
+            logInfo(`[${pluginName}] Ingested ${entry.station || '?'} ${freqFmt} MHz from ${entry.receiver || 'satellite'}`);
+
+            res.json({ ok: true });
+        } catch (error) {
+            logError(`[${pluginName}] Ingest failed: ${error.message}`);
+            res.status(500).json({ error: error.message });
         }
     });
 
@@ -298,7 +411,8 @@ async function handleTextSocketMessage(event) {
         const lastSeen = dxSeen.get(key) || 0;
 
         // Update memory if hold time passed
-        if (now - lastSeen >= (DX_HOLD_TIME * 60 * 1000)) {
+        const isNewEntry = (now - lastSeen >= (DX_HOLD_TIME * 60 * 1000));
+        if (isNewEntry) {
             dxSeen.set(key, now);
             isDxLogUpdated = true;
         }
@@ -352,6 +466,7 @@ async function handleTextSocketMessage(event) {
         };
 
         upsertDxLog(key, entry);
+        if (isNewEntry) forwardEntryToCentral(entry);
         saveDxLog();
 
     } catch (error) {
