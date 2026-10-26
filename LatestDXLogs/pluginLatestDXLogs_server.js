@@ -49,7 +49,7 @@ let TextSocket;
 let ipTimeout;
 let nodemailer;
 let MINIMUM_DX_DISTANCE, MAX_LOG_ENTRIES, DX_HOLD_TIME, DX_CONSOLE_HOLD_TIME, SEND_EMAIL, EMAIL_SERVICE, EMAIL_USER, EMAIL_PASS;
-let CENTRAL_SERVER_URL, CENTRAL_SERVER_TOKEN, ENABLE_CENTRAL_INGEST, INGEST_LOCAL_ONLY;
+let CENTRAL_SERVER_URL, CENTRAL_SERVER_TOKEN, SEND_RECEIVER_NAME, ENABLE_CENTRAL_INGEST, INGEST_LOCAL_ONLY;
 
 function checkConfigFile() {
     if (!fs.existsSync(configFolderPath)) {
@@ -70,6 +70,7 @@ function checkConfigFile() {
             "emailPass": "",
             "centralServerUrl": "",
             "centralServerToken": "",
+            "sendReceiverName": true,
             "enableCentralIngest": false,
             "ingestLocalOnly": true
         };
@@ -93,6 +94,7 @@ const defaultSettings = {
     emailPass: '',
     centralServerUrl: '',
     centralServerToken: '',
+    sendReceiverName: true,
     enableCentralIngest: false,
     ingestLocalOnly: true
 };
@@ -131,6 +133,7 @@ function loadSettings() {
         EMAIL_PASS = configData.emailPass ?? '';                                // email password
         CENTRAL_SERVER_URL = configData.centralServerUrl ?? '';                 // forward entries to this server
         CENTRAL_SERVER_TOKEN = configData.centralServerToken ?? '';             // shared secret for central server
+        SEND_RECEIVER_NAME = configData.sendReceiverName ?? true;               // include this server's name in forwarded entries
         ENABLE_CENTRAL_INGEST = configData.enableCentralIngest ?? false;        // accept incoming entries from satellites
         INGEST_LOCAL_ONLY = configData.ingestLocalOnly ?? true;                 // restrict ingest to local network IPs
 
@@ -232,7 +235,7 @@ async function forwardEntryToCentral(entry) {
     if (!CENTRAL_SERVER_URL || !entry) return;
     if (entry.receiver && String(entry.receiver).trim()) return;
 
-    const payload = { ...entry, receiver: ServerName || '' };
+    const payload = SEND_RECEIVER_NAME ? { ...entry, receiver: ServerName || '' } : entry;
     const target = CENTRAL_SERVER_URL.replace(/\/+$/, '') + '/latest-dx-log-ingest';
     try {
         const response = await fetch(target, {
@@ -440,7 +443,7 @@ async function handleTextSocketMessage(event) {
                     to: EMAIL_USER,
                     subject,
                     text
-                  });
+                  }).catch(err => logError(`[${pluginName}] DX email failed: ${err.message}`));
                 };
 
                 const subject = `[DX Log] ${ServerName.slice(0, emailTruncatedTitle)}... received ${station} [${itu}] on ${formatFrequency(frequency)} from ${distance} km`;
